@@ -26,7 +26,7 @@ All current tools are named so the gateway exposes them in its default `read_onl
 - `get_server_time` — returns the current UTC time as an ISO string.
 - `get_echo` — returns a supplied message to verify tool arguments and results.
 - `list_examples` — returns sample calls/tools and supports an optional `limit`.
-- `list_hrms_employees` — returns sample employees and supports optional department and employment-status filters. Its isolated mock data source can later be replaced with the real HRMS API.
+- `list_hrms_employees` — lists active employees with optional `department`, `province`, and `branch` filters. When `HRMS_BASE_URL` is set it fetches the live HRMS active-employee OData feed; otherwise it returns sample data shaped like that feed (`source` in the result is `hrms` or `sample`).
 
 `X-User-Email` is accepted when supplied and stored in the FastMCP session as `userEmail`. It is optional and is not currently used to authorize or scope tools.
 
@@ -39,6 +39,9 @@ src/
 ├── server.ts                   # FastMCP server construction
 ├── auth/
 │   └── service-token.ts        # Shared bearer-token authentication
+├── integrations/
+│   └── hrms/
+│       └── client.ts           # Live HRMS active-employee OData client
 └── tools/
     ├── index.ts                # Central tool-group registration
     ├── basic/
@@ -49,7 +52,8 @@ src/
     └── hrms/
         ├── index.ts
         ├── list-employees.ts   # MCP schema and execution adapter
-        ├── sample-data.ts      # Temporary mock data and filtering
+        ├── filter.ts           # Shared in-memory filtering
+        ├── sample-data.ts      # Mock data (fallback when HRMS_BASE_URL unset)
         └── types.ts
 test/
 ├── index.ts                    # Test entrypoint
@@ -60,7 +64,7 @@ test/
 
 Each domain owns its tools and exports one registration function from its `index.ts`. The central `src/tools/index.ts` is the only place that connects tool groups to the server.
 
-When the real HRMS API is available, add an `src/integrations/hrms/` client and replace the call to `listSampleEmployees` inside `list-employees.ts`. Keep API credentials in environment variables, HTTP handling in the integration client, and the MCP parameter schema in the tool file.
+The HRMS integration lives in `src/integrations/hrms/client.ts`, which fetches the active-employee OData feed (`GET {HRMS_BASE_URL}`) and returns its `value` array. `list-employees.ts` calls it when `HRMS_BASE_URL` is set and falls back to `listSampleEmployees` otherwise. The sample data mirrors the feed's field names (`No`, `Full_Name`, `Department_Name`, `Province_Name`, `Branch_Name`, …), so no field mapping is needed. The endpoint is currently network-trusted (no auth header); if it later requires credentials, add them as environment variables and set the header inside the client — keep HTTP handling in the integration client and the MCP parameter schema in the tool file.
 
 For another domain, create `src/tools/<domain>/`, export `register<Domain>Tools`, and add that group to `src/tools/index.ts`. Use a read-style tool name (`get_`, `list_`, `search_`, and similar) when it should remain visible under the gateway's default `read_only` policy.
 

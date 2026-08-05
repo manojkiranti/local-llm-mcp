@@ -1,0 +1,86 @@
+# Brings up the local LLM stack on one private network so the gateway reaches
+# the MCP server by service name (http://mcp:3333/mcp) instead of localhost.
+#
+# The shared bearer token is sourced once from this repo's .env
+# (MCP_SERVICE_TOKEN) and injected into BOTH services, so the MCP server and the
+# gateway can never drift out of sync.
+#
+# First-time setup (the gateway image does NOT auto-run migrations):
+#   docker compose run --rm gateway alembic upgrade head
+#   docker compose up --build
+#
+# Assumes Ollama runs on the host (default :11434). If Ollama runs elsewhere,
+# override OLLAMA_BASE_URL below.
+
+name: local-llm
+
+services:
+  mcp:
+    build:
+      context: .
+    image: local-llm-mcp:latest
+    environment:
+      MCP_SERVICE_TOKEN: ${MCP_SERVICE_TOKEN:?set MCP_SERVICE_TOKEN in ./.env}
+      HOST: 0.0.0.0
+      PORT: "3333"
+    # Published to loopback only, for host tools like MCP Inspector. The gateway
+    # does NOT need this — it reaches the server over the internal network.
+    ports:
+      - "127.0.0.1:3333:3333"
+    networks: [llm]
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ../../python/local-ai-model-gateway
+    image: local-ai-model-gateway:latest
+    # Load the gateway's own secrets (JWT_SECRET, admin emails, model config…).
+    env_file:
+      - ../../python/local-ai-model-gateway/.env
+    # These override anything in the env_file above — they wire the containers
+    # together and must win.
+    environment:
+      # Reach the MCP server by service name on the shared network.
+      MCP_SERVER_URL: http://mcp:3333/mcp
+      # Same shared secret as the MCP server — guaranteed to match.
+      MCP_AUTH_TOKEN: ${MCP_SERVICE_TOKEN:?set MCP_SERVICE_TOKEN in ./.env}
+      MCP_TOOL_MODE: read_only
+      # Use the bundled Postgres instead of whatever the gateway .env points to.
+      DATABASE_URL: postgresql+asyncpg://gateway:gateway@db:5432/gateway
+      # Ollama runs on the host; reach it via the Docker host gateway.
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      mcp:
+        condition: service_started
+      db:
+        condition: service_healthy
+    networks: [llm]
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: gateway
+      POSTGRES_DB: gateway
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gateway -d gateway"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks: [llm]
+    restart: unless-stopped
+
+networks:
+  llm:
+    driver: bridge
+
+volumes:
+  db-data:

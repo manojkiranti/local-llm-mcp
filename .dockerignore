@@ -1,0 +1,29 @@
+# Dependencies and build output (reinstalled/rebuilt inside the image)
+node_modules
+dist
+
+# Secrets and local env — pass these at runtime, never bake into the image
+.env
+.env.*
+!.env.example
+
+# Version control and CI
+.git
+.gitignore
+
+# Tests and dev-only sources
+test
+
+# Editor/OS cruft
+.vscode
+.idea
+*.swp
+.DS_Store
+
+# Logs
+npm-debug.log*
+*.log
+
+# Docker files themselves
+Dockerfile
+.dockerignore
