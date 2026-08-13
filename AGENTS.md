@@ -89,7 +89,7 @@ Each tool domain belongs under `src/tools/<domain>/` and exports one `register<D
 9. **Centralize server configuration** — parse and validate listener/auth settings in `src/config.ts`. If a new environment variable is introduced, document it in `.env.example` and `README.md` without adding a real secret.
 10. **Preserve live-versus-sample truthfulness** — `list_hrms_employees` uses the live feed only when `HRMS_BASE_URL` is set. Its result must continue to identify `source` as `hrms` or `sample`; never present fallback data as live HRMS data.
 11. **Keep HRMS behavior aligned across sources** — apply the shared in-memory filters to live and sample employee arrays. Preserve the upstream HRMS field names unless the external contract is deliberately migrated.
-12. **Update tests with behavior** — add a test module under `test/`, import it from `test/index.ts`, and cover authentication/config boundaries plus success and failure paths relevant to the change.
+12. **Always add or update tests** — every behavior-changing code change must include corresponding automated tests. Cover the main success path and relevant failure or boundary cases. Add new test modules under `test/` and import them from `test/index.ts`. Do not consider implementation complete until `npm test`, `npm run typecheck`, and `npm run build` pass.
 
 ## Current tools
 
