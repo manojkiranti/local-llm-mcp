@@ -1,5 +1,5 @@
-import { filterEmployees } from './filter.js';
-import type { Employee, EmployeeFilters } from './types.js';
+import { filterDepartments, filterEmployees } from './filter.js';
+import type { Department, DepartmentFilters, Employee, EmployeeFilters, EmployeeTasks } from './types.js';
 
 // Mock rows shaped exactly like the real HRMS active-employee OData feed.
 // Values are fabricated; the live feed returns the same field set.
@@ -108,4 +108,88 @@ export const SAMPLE_EMPLOYEES: readonly Employee[] = [
 
 export function listSampleEmployees(filters: EmployeeFilters): Employee[] {
   return filterEmployees(SAMPLE_EMPLOYEES, filters);
+}
+
+// The real tasks feed always returns exactly one row that echoes the
+// requested employee_id, with all-zero counts for an employee with nothing
+// pending. Mirror that shape for the mock fallback.
+export function sampleEmployeeTasks(employeeId: string): EmployeeTasks {
+  return {
+    primaryKey: '',
+    To_Recommend_Attendance_Missed: 0,
+    To_Approve_Attendance_Missed: 0,
+    To_Recommend_Leave_Req: 0,
+    To_Approve_Leave_Request: 0,
+    To_Recommend_Travel_Req: 0,
+    To_Approve_Travel_Req: 0,
+    To_Recommend_Travel_Claim: 0,
+    To_Approve_Travel_Claim: 0,
+    To_Recommend_Transfer: 0,
+    Incoming_Branch: 0,
+    To_Review_Transfer: 0,
+    To_Approve_Overtime: 0,
+    To_Recommend_Overtime: 0,
+    To_Recommend_Resignation: 0,
+    To_Reviews_Resignation: 0,
+    To_Recommend_Salary_Advance: 0,
+    To_Recommend_Personal_Loan: 0,
+    To_Recommend_Home_Loan: 0,
+    To_Recommend_Vehicle_Loan: 0,
+    To_Recommend_Allowance_Assig: 0,
+    To_Recommend_Tranfer_Claim: 0,
+    To_Review_Transfer_Claim: 0,
+    Employee_Filter: employeeId,
+  };
+}
+
+// Mock rows shaped exactly like the real HRMS departments feed.
+export const SAMPLE_DEPARTMENTS: readonly Department[] = [
+  {
+    '@odata.etag': 'W/"sample-dept-001"',
+    Code: 'ENG',
+    Name: 'Engineering',
+    Approver_Code: 'EMP-1005',
+    Approver_Name: 'Priya Thapa',
+    Approver_Code_Second: '',
+    Approver_Name_Second: '',
+    Skip_Attendance_Report: false,
+    Blocked: false,
+  },
+  {
+    '@odata.etag': 'W/"sample-dept-002"',
+    Code: 'HR',
+    Name: 'People Operations',
+    Approver_Code: 'EMP-1006',
+    Approver_Name: 'Ramesh Koirala',
+    Approver_Code_Second: '',
+    Approver_Name_Second: '',
+    Skip_Attendance_Report: false,
+    Blocked: false,
+  },
+  {
+    '@odata.etag': 'W/"sample-dept-003"',
+    Code: 'SAL',
+    Name: 'Sales',
+    Approver_Code: 'EMP-1007',
+    Approver_Name: 'Anjali Basnet',
+    Approver_Code_Second: '',
+    Approver_Name_Second: '',
+    Skip_Attendance_Report: false,
+    Blocked: false,
+  },
+  {
+    '@odata.etag': 'W/"sample-dept-004"',
+    Code: 'LEG',
+    Name: 'Legacy Operations',
+    Approver_Code: '',
+    Approver_Name: '',
+    Approver_Code_Second: '',
+    Approver_Name_Second: '',
+    Skip_Attendance_Report: true,
+    Blocked: true,
+  },
+];
+
+export function listSampleDepartments(filters: DepartmentFilters): Department[] {
+  return filterDepartments(SAMPLE_DEPARTMENTS, filters);
 }

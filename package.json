@@ -12,7 +12,11 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx test/index.ts"
   },
-  "keywords": ["mcp", "fastmcp", "llm"],
+  "keywords": [
+    "mcp",
+    "fastmcp",
+    "llm"
+  ],
   "author": "",
   "license": "ISC",
   "engines": {
@@ -20,6 +24,8 @@
   },
   "dependencies": {
     "fastmcp": "^4.12.2",
+    "httpntlm": "^1.8.13",
+    "mysql2": "^3.23.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
