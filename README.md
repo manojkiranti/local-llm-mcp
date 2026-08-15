@@ -21,7 +21,7 @@ The server defaults to `HOST=127.0.0.1`, `PORT=3333`, and the fixed endpoint `/m
 
 ## Tools
 
-All current tools are named so the gateway exposes them in its default `read_only` mode:
+All current tools are read-only. They are exposed by exact name via the gateway's `MCP_TOOL_ALLOWLIST` (see [Connect the local LLM gateway](#connect-the-local-llm-gateway)); adding a tool below means adding it there too, or it stays invisible to the model.
 
 - `get_server_time` — returns the current UTC time as an ISO string.
 - `get_echo` — returns a supplied message to verify tool arguments and results.
@@ -116,7 +116,7 @@ The iZone integration lives in `src/integrations/izone/client.ts`, talking to a 
 
 The EMS integration (`src/integrations/ems/client.ts`) is different from the others: it's a direct MySQL connection (via `mysql2`), not an HTTP API, and `search_ems_records` lets the calling LLM execute SQL it composes itself from a natural-language question rather than the tool taking structured filter parameters. Because of that, safety is enforced in the client, not just the tool schema: `assertSafeSelectStatement` rejects anything that isn't a single `SELECT`/`WITH` statement (no semicolons, no write/DDL/admin keywords), and `searchEmsRecords` then executes it wrapped in a row-limited derived table (`SELECT * FROM (<query>) AS ems_query_result LIMIT ?`) — a structural guarantee, since MySQL can't parse non-SELECT SQL inside that `FROM` clause even if the keyword check missed something. `list_ems_tables` reads `INFORMATION_SCHEMA` with parameterized queries built by the client itself (never user-supplied SQL) so the calling LLM can learn real table/column names before composing a query. A read-only MySQL user is recommended for `EMS_DB_USER` as defense in depth, though the tool enforces read-only regardless.
 
-For another domain, create `src/tools/<domain>/`, export `register<Domain>Tools`, and add that group to `src/tools/index.ts`. Use a read-style tool name (`get_`, `list_`, `search_`, and similar) when it should remain visible under the gateway's default `read_only` policy.
+For another domain, create `src/tools/<domain>/`, export `register<Domain>Tools`, and add that group to `src/tools/index.ts`. Use a read-style tool name (`get_`, `list_`, `search_`, and similar), then add the exact name to the gateway's `MCP_TOOL_ALLOWLIST` — registering it here is not enough to make it visible.
 
 ## Connect the local LLM gateway
 
@@ -125,10 +125,13 @@ In `/home/manoj/newlaptop/projects/python/local-ai-model-gateway/.env`, set:
 ```dotenv
 MCP_SERVER_URL=http://localhost:3333/mcp
 MCP_AUTH_TOKEN=<the same value as this server's MCP_SERVICE_TOKEN>
-MCP_TOOL_MODE=read_only
+MCP_TOOL_MODE=allowlist
+MCP_TOOL_ALLOWLIST=get_server_time,get_echo,list_examples,list_hrms_employees,list_hrms_departments,get_hrms_employee_details,get_hrms_employee_tasks,list_izone_lists,list_izone_list_items,list_izone_documents,search_izone_country_circulars,list_ems_tables,search_ems_records
 ```
 
-For write tools added later, switch to `MCP_TOOL_MODE=allowlist` and set `MCP_TOOL_ALLOWLIST` to exact comma-separated tool names, or deliberately use `all`. Restart the gateway after changing its environment.
+`docker-compose.yml` sets the same pair for the containerized gateway. Prefer `allowlist` over `read_only`: `read_only` infers exposure from the tool *name*, so any future `get_`/`list_`/`search_` tool goes live without a decision — including SQL-accepting ones like `search_ems_records`. Under `allowlist`, a new tool stays invisible until it is added here on purpose.
+
+Names are matched exactly (set membership — no prefixes or globs), so a typo silently hides a tool rather than erroring. After changing the list, restart the gateway and confirm the exposed set with `GET /mcp/status`. Choose `all` only as a deliberate decision to enable write tools.
 
 With a valid gateway JWT, `GET /v1/tools` should list these tools with `backend` set to `mcp`. `POST /v1/agent` can then select and call them.
 

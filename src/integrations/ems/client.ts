@@ -79,6 +79,19 @@ function getPool(config: EmsDbConfig): mysql.Pool {
   return cachedPool;
 }
 
+/**
+ * Closes the cached connection pool, if one is open. Safe to call when no pool
+ * was ever created and safe to call twice — process shutdown may run on both
+ * SIGINT and SIGTERM. Without this, `server.stop()` leaves MySQL sockets open
+ * and the process lingers instead of exiting.
+ */
+export async function closeEmsPool(): Promise<void> {
+  const pool = cachedPool;
+  cachedPool = undefined;
+  cachedPoolKey = undefined;
+  await pool?.end();
+}
+
 type QueryRow = Record<string, unknown>;
 type EmsQuery = { sql: string; timeout?: number };
 export type EmsQueryExecutor = (query: EmsQuery, values?: unknown[]) => Promise<[QueryRow[], unknown]>;
@@ -184,11 +197,17 @@ export async function searchEmsRecords(
 ): Promise<SearchEmsRecordsResult> {
   const { queryImpl } = resolveExecutor(options);
   const safeSql = assertSafeSelectStatement(sql);
-  const wrapped = `SELECT * FROM (\n${safeSql}\n) AS ems_query_result LIMIT ?`;
-  const [rows] = await queryImpl(
-    { sql: wrapped, timeout: options.timeoutMs ?? DEFAULT_QUERY_TIMEOUT_MS },
-    [options.limit + 1],
-  );
+  const timeoutMs = options.timeoutMs ?? DEFAULT_QUERY_TIMEOUT_MS;
+  // Two independent bounds, because they stop different things. The mysql2
+  // `timeout` below aborts the *client* wait, but leaves the query running on
+  // the server — a runaway join would keep burning EMS resources after we
+  // stopped listening. MAX_EXECUTION_TIME makes the server kill it too. The
+  // hint must sit on the outer SELECT to bound the whole statement; servers
+  // that do not implement it (e.g. older MariaDB) parse it as a comment and
+  // ignore it, so it degrades to client-side-only rather than erroring.
+  const wrapped =
+    `SELECT /*+ MAX_EXECUTION_TIME(${Math.round(timeoutMs)}) */ * FROM (\n${safeSql}\n) AS ems_query_result LIMIT ?`;
+  const [rows] = await queryImpl({ sql: wrapped, timeout: timeoutMs }, [options.limit + 1]);
   const hasMore = rows.length > options.limit;
   return { rows: hasMore ? rows.slice(0, options.limit) : rows, hasMore };
 }
@@ -208,6 +227,7 @@ export async function fetchEmsTables(options: EmsClientOptions = {}): Promise<Em
             FROM INFORMATION_SCHEMA.TABLES
             WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'
             ORDER BY TABLE_NAME`,
+      timeout: DEFAULT_QUERY_TIMEOUT_MS,
     },
     [config.database],
   );
@@ -240,6 +260,7 @@ export async function fetchEmsTableColumns(
             FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
             ORDER BY ORDINAL_POSITION`,
+      timeout: DEFAULT_QUERY_TIMEOUT_MS,
     },
     [config.database, table],
   );

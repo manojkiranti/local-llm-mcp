@@ -44,7 +44,26 @@ services:
       MCP_SERVER_URL: http://mcp:3333/mcp
       # Same shared secret as the MCP server — guaranteed to match.
       MCP_AUTH_TOKEN: ${MCP_SERVICE_TOKEN:?set MCP_SERVICE_TOKEN in ./.env}
-      MCP_TOOL_MODE: read_only
+      # Exact-name allowlist rather than read_only. read_only infers intent from
+      # the tool NAME (read-like prefix, no write-like token), so a future tool
+      # is exposed the moment it is named get_/list_/search_ — no decision
+      # required. allowlist inverts that: a new tool is invisible until someone
+      # adds it here on purpose. That matters most for search_ems_records, which
+      # passes read_only on its name alone while accepting caller-composed SQL.
+      #
+      # Names must match src/tools/**/*.ts exactly (set membership, no
+      # prefix/glob matching) — a typo silently hides the tool instead of
+      # erroring. Verify after any change with:
+      #   curl -s localhost:8000/mcp/status -H "Authorization: Bearer <jwt>"
+      # and confirm the "tools" array lists all of them.
+      MCP_TOOL_MODE: allowlist
+      MCP_TOOL_ALLOWLIST: >-
+        get_server_time,get_echo,list_examples,
+        list_hrms_employees,list_hrms_departments,
+        get_hrms_employee_details,get_hrms_employee_tasks,
+        list_izone_lists,list_izone_list_items,list_izone_documents,
+        search_izone_country_circulars,
+        list_ems_tables,search_ems_records
       # Use the bundled Postgres instead of whatever the gateway .env points to.
       DATABASE_URL: postgresql+asyncpg://gateway:gateway@db:5432/gateway
       # Ollama runs on the host; reach it via the Docker host gateway.

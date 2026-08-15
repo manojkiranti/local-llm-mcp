@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   assertSafeSelectStatement,
+  closeEmsPool,
   fetchEmsTableColumns,
   fetchEmsTables,
   getEmsDbConfig,
@@ -172,6 +173,45 @@ test('searchEmsRecords throws when EMS is not configured and no config override 
   );
 });
 
+test('searchEmsRecords caps server-side execution with a MAX_EXECUTION_TIME hint', async () => {
+  let capturedQuery: { sql: string; timeout?: number } | undefined;
+  const queryImpl = async (query: { sql: string; timeout?: number }) => {
+    capturedQuery = query;
+    return [[], undefined] as [Record<string, unknown>[], unknown];
+  };
+
+  await searchEmsRecords('select id from expenses', { limit: 5, config: CONFIG, queryImpl });
+
+  // The hint must sit on the outer SELECT so it bounds the whole statement,
+  // including the caller-supplied derived table.
+  assert.match(capturedQuery!.sql, /^SELECT \/\*\+ MAX_EXECUTION_TIME\(10000\) \*\/ \* FROM \(/);
+  assert.equal(capturedQuery!.timeout, 10_000);
+});
+
+test('searchEmsRecords applies a timeoutMs override to both the client and server bound', async () => {
+  let capturedQuery: { sql: string; timeout?: number } | undefined;
+  const queryImpl = async (query: { sql: string; timeout?: number }) => {
+    capturedQuery = query;
+    return [[], undefined] as [Record<string, unknown>[], unknown];
+  };
+
+  await searchEmsRecords('select id from expenses', {
+    limit: 5,
+    timeoutMs: 2_500,
+    config: CONFIG,
+    queryImpl,
+  });
+
+  assert.ok(capturedQuery!.sql.includes('MAX_EXECUTION_TIME(2500)'));
+  assert.equal(capturedQuery!.timeout, 2_500);
+});
+
+test('closeEmsPool resolves without throwing when no pool was ever opened', async () => {
+  await closeEmsPool();
+  // Idempotent: shutdown may run after an earlier close, or twice on SIGINT+SIGTERM.
+  await closeEmsPool();
+});
+
 test('fetchEmsTables queries INFORMATION_SCHEMA.TABLES with the configured database', async () => {
   let capturedValues: unknown;
   const queryImpl = async (_query: { sql: string }, values?: unknown[]) => {
@@ -209,4 +249,17 @@ test('fetchEmsTableColumns queries INFORMATION_SCHEMA.COLUMNS with database and 
   assert.deepEqual(columns, [
     { name: 'id', type: 'int', nullable: false, key: 'PRI', defaultValue: null, comment: '' },
   ]);
+});
+
+test('schema queries carry a timeout so a stalled server cannot hang the tool call', async () => {
+  const timeouts: (number | undefined)[] = [];
+  const queryImpl = async (query: { sql: string; timeout?: number }) => {
+    timeouts.push(query.timeout);
+    return [[], undefined] as [Record<string, unknown>[], unknown];
+  };
+
+  await fetchEmsTables({ config: CONFIG, queryImpl });
+  await fetchEmsTableColumns('expenses', { config: CONFIG, queryImpl });
+
+  assert.deepEqual(timeouts, [10_000, 10_000]);
 });

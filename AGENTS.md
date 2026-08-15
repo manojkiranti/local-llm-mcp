@@ -82,7 +82,7 @@ Each tool domain belongs under `src/tools/<domain>/` and exports one `register<D
 2. **Keep authentication backend-to-backend** — validate `Authorization: Bearer <token>` against `MCP_SERVICE_TOKEN`. Do not add OAuth, login routes, browser connection flows, or per-user tokens unless the user explicitly changes the architecture.
 3. **Treat the service token as full access** — never log it, return it from a tool, bake it into an image, or commit it. Keep timing-safe token comparison in `src/auth/service-token.ts`.
 4. **Do not use user email as authorization** — `X-User-Email` may populate `session.userEmail`, but it is optional metadata and does not currently scope tool access.
-5. **Keep read tools compatible with gateway policy** — the gateway normally uses `MCP_TOOL_MODE=read_only`. Name read operations with prefixes such as `get_`, `list_`, or `search_`. Do not disguise a mutation with a read-style name.
+5. **Keep read tools compatible with gateway policy** — the gateway uses `MCP_TOOL_MODE=allowlist` with exact names in `MCP_TOOL_ALLOWLIST`. Registering a tool does not expose it; add its exact name to that list too, in `docker-compose.yml` and `README.md`. Still name read operations `get_`, `list_`, or `search_`, and never disguise a mutation with a read-style name — the allowlist is the enforcement, the naming convention is the signal to humans.
 6. **Register tools centrally** — a tool is not available until its domain registration function is called from `src/tools/index.ts`. Keep tool names unique across domains.
 7. **Validate every tool input** — define bounded Zod schemas with useful descriptions. Avoid unbounded list sizes, ambiguous optional values, and unchecked casts.
 8. **Separate tools from integrations** — tool files own MCP names, descriptions, schemas, and response adaptation. Integration clients own URLs, headers, timeouts, fetch behavior, and upstream response handling.
@@ -117,12 +117,15 @@ The compose stack connects the gateway to this server over the private Docker ne
 ```dotenv
 MCP_SERVER_URL=http://mcp:3333/mcp
 MCP_AUTH_TOKEN=<same value as MCP_SERVICE_TOKEN>
-MCP_TOOL_MODE=read_only
+MCP_TOOL_MODE=allowlist
+MCP_TOOL_ALLOWLIST=<exact comma-separated tool names; see docker-compose.yml>
 ```
 
 For host-based development, the equivalent server URL is `http://localhost:3333/mcp`. Changing the MCP server token requires the gateway token to change to the same value, followed by a restart.
 
-Write tools require an explicit gateway policy decision: use `MCP_TOOL_MODE=allowlist` with exact tool names, or deliberately choose `all`. Do not relax this policy as a side effect of adding a tool.
+The allowlist is matched by exact set membership, so a typo silently hides a tool rather than erroring. After changing it, restart the gateway and confirm the exposed set via `GET /mcp/status`.
+
+Never widen this policy as a side effect of adding a tool. `read_only` is weaker than it looks — it infers exposure from the tool name, so a new `get_`/`list_`/`search_` tool goes live with no decision. `all` enables write tools and requires a deliberate choice.
 
 ## Checklist: adding a tool domain
 
@@ -131,9 +134,10 @@ Write tools require an explicit gateway policy decision: use `MCP_TOOL_MODE=allo
 3. Define a bounded Zod input schema and a clear tool description.
 4. Choose a truthful read or write name that matches gateway policy.
 5. Register the domain in `src/tools/index.ts`.
-6. Add any environment variables to config as appropriate, `.env.example`, and `README.md`.
-7. Add tests and import the test module from `test/index.ts`.
-8. Run `npm test`, `npm run typecheck`, and `npm run build`.
+6. Add each new tool's exact name to `MCP_TOOL_ALLOWLIST` in `docker-compose.yml` and `README.md`, or the gateway will not expose it.
+7. Add any environment variables to config as appropriate, `.env.example`, and `README.md`.
+8. Add tests and import the test module from `test/index.ts`.
+9. Run `npm test`, `npm run typecheck`, and `npm run build`.
 
 ## Verification boundaries
 

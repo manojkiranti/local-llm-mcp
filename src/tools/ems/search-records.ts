@@ -13,7 +13,10 @@ export function registerSearchEmsRecords(server: FastMCP<ServiceSession>): void 
       '"show pending expenses over 5000 for the Sales department") by translating them into SQL ' +
       'yourself. Call list_ems_tables first to learn real table/column names; do not guess them. Only ' +
       'a single SELECT statement is accepted — INSERT/UPDATE/DELETE, DDL, and multiple statements are ' +
-      'rejected. If hasMore is true, narrow the SQL (add WHERE/ORDER BY) rather than just raising ' +
+      'rejected. Select explicit, uniquely-named columns: the query runs inside a derived table, so ' +
+      'joins that project overlapping column names (e.g. "SELECT e.*, emp.* FROM expenses e JOIN ' +
+      'employees emp ...") fail with "Duplicate column name" — alias them instead (e.g. "emp.id AS ' +
+      'employee_id"). If hasMore is true, narrow the SQL (add WHERE/ORDER BY) rather than just raising ' +
       'limit. Uses the live database when EMS_DB_HOST/EMS_DB_NAME/EMS_DB_USER are configured, ' +
       'otherwise returns a fixed sample of expense rows regardless of the sql given.',
     parameters: z.object({

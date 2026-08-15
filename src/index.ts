@@ -1,4 +1,5 @@
 import { getServerConfig } from './config.js';
+import { closeEmsPool } from './integrations/ems/client.js';
 import { createServer } from './server.js';
 
 const config = getServerConfig();
@@ -14,6 +15,11 @@ console.log(
 const shutdown = async (signal: string) => {
   console.log(`Received ${signal}; stopping MCP server.`);
   await server.stop();
+  // The EMS MySQL pool holds open sockets that survive server.stop(); close it
+  // so the process can exit cleanly instead of being killed by the timeout.
+  await closeEmsPool().catch((error: unknown) => {
+    console.error('Failed to close the EMS connection pool:', error);
+  });
   process.exit(0);
 };
 process.on('SIGINT', () => void shutdown('SIGINT'));
